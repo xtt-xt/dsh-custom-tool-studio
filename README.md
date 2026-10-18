@@ -9,7 +9,7 @@
 
 保存后的工具会立刻注册成真正的 DSH 工具（不需要重启 DSH），模型下一轮就能调用。所有数据只存在本机 `%DSH_HOME%\custom-tools`，不会上传。
 
-> 仓库（私有）：<https://github.com/xtt-xt/dsh-custom-tool-studio> · 当前版本 1.0.0
+> 仓库（公开）：<https://github.com/xtt-xt/dsh-custom-tool-studio> · MIT · 当前版本 1.1.0
 
 ---
 
@@ -351,11 +351,16 @@ node "$env:APPDATA\npm\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profil
 dsh.cmd plugin --profile desktop add git+https://github.com/xtt-xt/dsh-custom-tool-studio.git
 ```
 
-仓库目前是**私有**的，pnpm 拉私有 git 需要鉴权，用一次性 token 形式（`Contents: read` 即可）：
+仓库是**公开**的，直接装即可，不需要 token：
 
 ```powershell
-$env:GH_TOKEN = '<你的 GitHub PAT>'
-dsh.cmd plugin --profile desktop add "git+https://x-access-token:$env:GH_TOKEN@github.com/xtt-xt/dsh-custom-tool-studio.git"
+dsh.cmd plugin --profile desktop add git+https://github.com/xtt-xt/dsh-custom-tool-studio.git
+```
+
+也可以装 Release 上的预构建包（`dsh-custom-tool-studio.tgz`，免源码构建）：
+
+```powershell
+dsh.cmd plugin --profile desktop add https://github.com/xtt-xt/dsh-custom-tool-studio/releases/latest/download/dsh-custom-tool-studio.tgz
 ```
 
 装完同样要**完全退出 DSH 再启动**。在本机做开发时继续用 8.1 的 `link:` 方式（改代码不用重装）。
@@ -548,7 +553,7 @@ F:\xtt\workspace\dsh-custom-tool-studio\
 
 ### 11.1 推送到 GitHub
 
-仓库地址（**私有**）：<https://github.com/xtt-xt/dsh-custom-tool-studio>
+仓库地址（**公开**）：<https://github.com/xtt-xt/dsh-custom-tool-studio>
 
 `origin` 走 **SSH**（`git@github.com:xtt-xt/dsh-custom-tool-studio.git`）：本机 `github.com:22` 可通、`github.com:443` 被拦，所以 SSH 是这台机器上可用的 git 传输方式。公钥 `~/.ssh/id_ed25519` 已加到 GitHub 账号 `xtt-xt`。
 

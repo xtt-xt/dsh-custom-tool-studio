@@ -1,0 +1,63 @@
+{
+  "name": "dsh-custom-tool-studio",
+  "version": "1.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Custom tool studio: author Python tools in a Web page or through agent tools, then run them as first-class DSH tools. Dangerous tools require built-in approval before every execution.",
+  "icon": "icon.svg",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib/**/*.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "restore.ps1",
+    "selfcheck.mjs",
+    "README.md",
+    "CONTRACT.md"
+  ],
+  "scripts": {
+    "selfcheck": "node selfcheck.mjs",
+    "test": "node test/run.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "cordis",
+    "python",
+    "tools"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xtt-xt/dsh-custom-tool-studio.git"
+  },
+  "homepage": "https://github.com/xtt-xt/dsh-custom-tool-studio#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout"
+      ]
+    }
+  }
+}

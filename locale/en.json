@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Custom Tool Studio",
+    "description": "Author Python tools in a Web page or through agent tools. Saved tools register as real DSH tools; tools marked dangerous require built-in approval before every execution."
+  }
+}

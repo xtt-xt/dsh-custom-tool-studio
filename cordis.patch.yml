@@ -1,0 +1,8 @@
+# Bundle patch for the custom tool studio.
+# Installed as a profile bundle layer (declared by package.json dsh.bundle.patch).
+# The single row owns both halves: the Host plugin (routes + dynamic tool
+# registration + dangerous-call approval gate) and, through package.json
+# `dsh.client`, the Web sidebar panel.
+- insert:
+    - id: custom-tool-studio
+      name: 'dsh-custom-tool-studio'

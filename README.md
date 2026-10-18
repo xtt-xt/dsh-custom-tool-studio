@@ -451,6 +451,7 @@ F:\xtt\workspace\dsh-custom-tool-studio\
 │  ├─ client-dict.test.mjs   # 字典 zh/en 对齐、用到的 key 都存在
 │  └─ client-render.test.mjs # 纯组件渲染（对话框/分组/编辑器）
 ├─ .github\workflows\ci.yml  # 推送后自动跑 selfcheck + 测试
+├─ scripts\push-api.mjs  # 本机 git push 走不通时，用 GitHub API 提交
 ├─ locale\               # zh / en 文案
 ├─ icon.svg
 ├─ restore.ps1           # 一键恢复（本文件第 9 节）
@@ -463,8 +464,31 @@ F:\xtt\workspace\dsh-custom-tool-studio\
 ```text
 改 index.js / lib\*.js / client.js
   → node F:\xtt\workspace\dsh-custom-tool-studio\selfcheck.mjs
+  → node F:\xtt\workspace\dsh-custom-tool-studio\test\run.mjs
   → 重启 DSH（link: 安装后改代码不需要重新 add）
 ```
+
+### 11.1 推送到 GitHub
+
+仓库地址（**私有**）：<https://github.com/xtt-xt/dsh-custom-tool-studio>
+
+网络能直连 `github.com:443` 时直接推：
+
+```powershell
+git add -A
+git commit -m "feat: ..."
+git push origin main
+```
+
+如果本机只有 `api.github.com` 可通、`git push` 连不上 github.com（本次就是这种情况），用仓库里的 API 脚本提交同样的树：
+
+```powershell
+$env:GH_TOKEN = '<GitHub PAT>'          # 需要 Contents: write
+"feat: ..." | Set-Content -Path "$env:TEMP\msg.txt" -Encoding utf8
+node scripts\push-api.mjs xtt-xt/dsh-custom-tool-studio main "$env:TEMP\msg.txt"
+```
+
+脚本会为每个已跟踪文件建 blob → 建 tree → 建 commit → 移动 `refs/heads/main`，输出的最后一行是 commit 链接。等网络恢复后在本机执行 `git fetch origin && git reset --hard origin/main` 即可把本地历史对齐到远端。
 
 ---
 

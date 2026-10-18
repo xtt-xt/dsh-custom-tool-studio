@@ -472,15 +472,15 @@ F:\xtt\workspace\dsh-custom-tool-studio\
 
 仓库地址（**私有**）：<https://github.com/xtt-xt/dsh-custom-tool-studio>
 
-网络能直连 `github.com:443` 时直接推：
+`origin` 走 **SSH**（`git@github.com:xtt-xt/dsh-custom-tool-studio.git`）：本机 `github.com:22` 可通、`github.com:443` 被拦，所以 SSH 是这台机器上可用的 git 传输方式。公钥 `~/.ssh/id_ed25519` 已加到 GitHub 账号 `xtt-xt`。
 
 ```powershell
 git add -A
 git commit -m "feat: ..."
-git push origin main
+git push               # 已设置 upstream = origin/main
 ```
 
-如果本机只有 `api.github.com` 可通、`git push` 连不上 github.com（本次就是这种情况），用仓库里的 API 脚本提交同样的树：
+如果换到只有 `api.github.com` 可通、22/443 都不通的环境，用仓库里的 API 脚本提交同样的树（不需要 git 协议）：
 
 ```powershell
 $env:GH_TOKEN = '<GitHub PAT>'          # 需要 Contents: write
@@ -488,7 +488,7 @@ $env:GH_TOKEN = '<GitHub PAT>'          # 需要 Contents: write
 node scripts\push-api.mjs xtt-xt/dsh-custom-tool-studio main "$env:TEMP\msg.txt"
 ```
 
-脚本会为每个已跟踪文件建 blob → 建 tree → 建 commit → 移动 `refs/heads/main`，输出的最后一行是 commit 链接。等网络恢复后在本机执行 `git fetch origin && git reset --hard origin/main` 即可把本地历史对齐到远端。
+脚本会为每个已跟踪文件建 blob → 建 tree → 建 commit → 移动 `refs/heads/main`，输出的最后一行是 commit 链接。用它推送后，本机执行 `git fetch origin && git reset --hard origin/main` 把本地历史对齐到远端。
 
 ---
 

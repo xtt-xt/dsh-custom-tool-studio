@@ -172,14 +172,31 @@ ok('runner written', existsSync(join(root, 'runner.py')))
 
 // settings
 const defaults = store.settings()
-ok('settings defaults', defaults.approveCreate === false && defaults.approveUpdate === false && defaults.approveDelete === true, JSON.stringify(defaults))
-const saved = store.saveSettings({ approveCreate: true, approveUpdate: 'yes', junk: 1 })
-ok('settings save keeps booleans only', saved.approveCreate === true && saved.approveUpdate === false && saved.approveDelete === true && !('junk' in saved), JSON.stringify(saved))
+ok(
+  'settings defaults',
+  defaults.unlockMode === false
+    && defaults.allowUngroupedUnlock === false
+    && defaults.approveCreate === false
+    && defaults.approveUpdate === false
+    && defaults.approveDelete === true,
+  JSON.stringify(defaults),
+)
+const saved = store.saveSettings({ unlockMode: true, allowUngroupedUnlock: true, approveCreate: true, approveUpdate: 'yes', junk: 1 })
+ok(
+  'settings save keeps booleans only',
+  saved.unlockMode === true
+    && saved.allowUngroupedUnlock === true
+    && saved.approveCreate === true
+    && saved.approveUpdate === false
+    && saved.approveDelete === true
+    && !('junk' in saved),
+  JSON.stringify(saved),
+)
 ok('settings persisted', JSON.stringify(store.settings()) === JSON.stringify(saved))
 const freshStore = createStore(root)
-ok('settings survive reopening', freshStore.settings().approveCreate === true)
-const cleared = store.saveSettings({ approveDelete: false })
-ok('settings patch merges', cleared.approveCreate === true && cleared.approveDelete === false, JSON.stringify(cleared))
+ok('settings survive reopening', freshStore.settings().unlockMode === true && freshStore.settings().allowUngroupedUnlock === true)
+const cleared = store.saveSettings({ unlockMode: false, approveDelete: false })
+ok('settings patch merges', cleared.unlockMode === false && cleared.allowUngroupedUnlock === true && cleared.approveCreate === true && cleared.approveDelete === false, JSON.stringify(cleared))
 ok('settings file exists', existsSync(join(root, 'settings.json')))
 ok('settings file is valid json', JSON.parse(readFileSync(join(root, 'settings.json'), 'utf8')).approveDelete === false)
 
@@ -189,6 +206,13 @@ ok('pack_list empty hint', packListEmpty.ok === true && packListEmpty.summary.in
 
 const packA = store.createPack({ name: '文本工具', description: '处理文本的合集', tools: ['python_word_count'] })
 ok('pack create', packA.name === '文本工具' && packA.id.startsWith('p_'), packA.id)
+ok('pack defaults to not always unlocked', packA.alwaysUnlocked === false, String(packA.alwaysUnlocked))
+const packAlways = store.updatePack(packA.id, { alwaysUnlocked: true })
+ok('pack always-unlocked round-trip', packAlways.alwaysUnlocked === true, String(packAlways.alwaysUnlocked))
+const packAlwaysReopened = createStore(root).findPackByName('文本工具')
+ok('pack always-unlocked survives reopening', packAlwaysReopened.alwaysUnlocked === true, String(packAlwaysReopened.alwaysUnlocked))
+store.updatePack(packA.id, { alwaysUnlocked: false })
+ok('pack always-unlocked can be cleared', store.findPackByName('文本工具').alwaysUnlocked === false)
 ok('pack membership written', store.findByName('python_word_count').packId === packA.id)
 ok('pack membership summary', decoratePack(packA).toolCount === 1 && decoratePack(packA).enabledCount === 1)
 ok('pack find by name', store.findPackByName('文本工具')?.id === packA.id)
@@ -278,6 +302,9 @@ ok(
   packEdited.ok === true && packEdited.summary.includes('改后的描述') && !packEdited.summary.includes('python_outsider'),
   packEdited.summary.split('\n')[0],
 )
+const packAlwaysTool = await manage.execute({ action: 'pack_update', pack: 'AI 建的包', alwaysUnlocked: true })
+ok('manage pack_update alwaysUnlocked', packAlwaysTool.ok === true && packAlwaysTool.summary.includes('alwaysUnlocked: true'), packAlwaysTool.summary.split('\n')[0])
+await manage.execute({ action: 'pack_update', pack: 'AI 建的包', alwaysUnlocked: false })
 ok('pack update detached the dropped tool', store.findByName('python_outsider').packId === '')
 const packSwitched = await manage.execute({ action: 'pack_set_enabled', pack: 'AI 建的包', enabled: false })
 ok('manage pack_set_enabled', packSwitched.ok === true && packSwitched.summary.includes('整体停用'), packSwitched.summary)
@@ -298,6 +325,27 @@ ok('pack survives reopening', reopened.findPackByName('持久化包')?.id === pa
 ok('packs.json is valid json', JSON.parse(readFileSync(join(root, 'packs.json'), 'utf8')).packs.length === 1)
 ok('tool packId survives reopening', reopened.findByName('python_word_count').packId === '')
 ok('legacy record gets empty packId', reopened.list().every((tool) => typeof tool.packId === 'string'))
+
+// Per-session unlock state.
+const sessionId = 'session-store-test'
+const emptyUnlocks = store.unlocks(sessionId)
+ok('unlocks default to empty', emptyUnlocks.packs.length === 0 && emptyUnlocks.tools.length === 0)
+const savedUnlocks = store.setUnlocks(sessionId, { packs: [packPersist.id], tools: ['t_tool_id'] })
+ok('unlocks save both kinds', savedUnlocks.packs[0] === packPersist.id && savedUnlocks.tools[0] === 't_tool_id', JSON.stringify(savedUnlocks))
+const reopenedUnlocks = createStore(root).unlocks(sessionId)
+ok('unlocks survive reopening', reopenedUnlocks.packs[0] === packPersist.id && reopenedUnlocks.tools[0] === 't_tool_id')
+ok('unlocks.json exists and is valid', JSON.parse(readFileSync(join(root, 'unlocks.json'), 'utf8')).sessions[sessionId] !== undefined)
+store.setUnlocks(sessionId, { packs: [], tools: [] })
+ok('empty unlock state removes the session', JSON.parse(readFileSync(join(root, 'unlocks.json'), 'utf8')).sessions[sessionId] === undefined)
+store.setUnlocks('other-session', { packs: [packPersist.id], tools: [] })
+store.clearUnlocks('other-session')
+ok('clearUnlocks removes the session', store.unlocks('other-session').packs.length === 0)
+try {
+  store.setUnlocks('', { packs: [], tools: [] })
+  ok('blank session id rejected', false)
+} catch (error) {
+  ok('blank session id rejected', error.message.includes('sessionId'), error.message)
+}
 
 rmSync(root, { recursive: true, force: true })
 console.log(fails.length === 0 ? '\nALL PASS' : `\nFAILED: ${fails.join(', ')}`)

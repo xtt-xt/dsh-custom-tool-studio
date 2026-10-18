@@ -112,10 +112,13 @@ const store = await loadHostModule('./lib/store.js', [
   'validatePackName',
   'normalizePackInput',
   'createStore',
+  'DEFAULT_SETTINGS',
   'TOOL_NAME_RE',
 ])
 
-const tools = await loadHostModule('./lib/tools.js', ['buildToolDefinition', 'buildManageTool', 'MANAGE_TOOL_NAME'])
+const tools = await loadHostModule('./lib/tools.js', ['buildToolDefinition', 'buildManageTool', 'buildUnlockTool', 'MANAGE_TOOL_NAME', 'UNLOCK_TOOL_NAME'])
+
+const access = await loadHostModule('./lib/access.js', ['createAccessController', 'computeDeny', 'BASELINE_TOOL_NAMES'])
 
 const {
   TOOL_NAME_RE,
@@ -125,8 +128,10 @@ const {
   validatePackName,
   normalizePackInput,
   createStore,
+  DEFAULT_SETTINGS,
 } = store
-const { buildToolDefinition, buildManageTool, MANAGE_TOOL_NAME } = tools
+const { buildToolDefinition, buildManageTool, buildUnlockTool, MANAGE_TOOL_NAME, UNLOCK_TOOL_NAME } = tools
+const { computeDeny, BASELINE_TOOL_NAMES } = access
 
 // ---------------------------------------------------------------------------
 // TOOL_NAME_RE
@@ -165,6 +170,8 @@ record('validateToolName rejects invalid names', () => {
     '工具',
     'x'.repeat(49),
     'run_code',
+    'custom_tool_manage',
+    'custom_tool_unlock',
   ]
   for (const name of invalid) {
     const error = validateToolName(name)
@@ -400,8 +407,11 @@ record('normalizePackInput trims and keeps an optional description', () => {
   const fields = normalizePackInput({ name: '  演示包  ', description: '  说明  ' })
   must(fields.name === '演示包', `name was not trimmed: ${describe(fields.name)}`)
   must(fields.description === '说明', `description was not trimmed: ${describe(fields.description)}`)
+  must(fields.alwaysUnlocked === false, 'alwaysUnlocked should default to false')
   const bare = normalizePackInput({ name: '没描述' })
   must(bare.description === '', `description should default to "": ${describe(bare.description)}`)
+  const always = normalizePackInput({ name: '始终解锁包', alwaysUnlocked: true })
+  must(always.alwaysUnlocked === true, 'alwaysUnlocked was not preserved')
   return `${describe(fields)}`
 })
 
@@ -464,8 +474,89 @@ record('buildManageTool exposes the pack actions', () => {
   }
   must(manage.parameters.properties.pack !== undefined, 'management tool has no "pack" parameter')
   must(manage.parameters.properties.tools !== undefined, 'management tool has no "tools" parameter')
+  must(manage.parameters.properties.alwaysUnlocked !== undefined, 'management tool has no "alwaysUnlocked" parameter')
   must(manage.description.includes('工具包'), 'management tool description does not mention packs')
   return `${actions.length} actions`
+})
+
+// ---------------------------------------------------------------------------
+// Unlock mode (deferred tool loading)
+// ---------------------------------------------------------------------------
+
+record('global defaults keep unlock mode off', () => {
+  must(DEFAULT_SETTINGS.unlockMode === false, `unlockMode default: ${describe(DEFAULT_SETTINGS.unlockMode)}`)
+  must(DEFAULT_SETTINGS.allowUngroupedUnlock === false, `allowUngroupedUnlock default: ${describe(DEFAULT_SETTINGS.allowUngroupedUnlock)}`)
+  must(DEFAULT_SETTINGS.approveDelete === true, 'delete approval should stay on by default')
+  return describe(DEFAULT_SETTINGS)
+})
+
+record('baseline tools are the two studio tools', () => {
+  must(Array.isArray(BASELINE_TOOL_NAMES), 'BASELINE_TOOL_NAMES should be an array')
+  must(BASELINE_TOOL_NAMES.includes(MANAGE_TOOL_NAME), 'baseline is missing the management tool')
+  must(BASELINE_TOOL_NAMES.includes(UNLOCK_TOOL_NAME), 'baseline is missing the unlock tool')
+  return BASELINE_TOOL_NAMES.join(', ')
+})
+
+record('computeDeny keeps baseline tools and unlocks by pack or single tool', () => {
+  const records = [
+    { id: 't_a', name: 'alpha', packId: 'p_1' },
+    { id: 't_b', name: 'beta', packId: 'p_1' },
+    { id: 't_c', name: 'gamma', packId: '' },
+  ]
+  const packs = [{ id: 'p_1', name: 'pack', alwaysUnlocked: false }]
+  const base = [...BASELINE_TOOL_NAMES]
+  const all = [...base, 'alpha', 'beta', 'gamma']
+
+  const locked = computeDeny({ records, packs, liveNames: all, unlockedPackIds: [], unlockedToolIds: [], allowUngroupedUnlock: false })
+  must(locked.includes('alpha') && locked.includes('gamma'), 'locked view should hide pack and ungrouped tools')
+  must(!locked.includes(MANAGE_TOOL_NAME) && !locked.includes(UNLOCK_TOOL_NAME), 'baseline tools must never be denied')
+
+  const packOpen = computeDeny({ records, packs, liveNames: all, unlockedPackIds: ['p_1'], unlockedToolIds: [], allowUngroupedUnlock: false })
+  must(!packOpen.includes('alpha') && !packOpen.includes('beta'), 'an unlocked pack should reveal its members')
+  must(packOpen.includes('gamma'), 'an ungrouped tool should stay hidden')
+
+  const toolOpen = computeDeny({ records, packs, liveNames: all, unlockedPackIds: [], unlockedToolIds: ['t_c'], allowUngroupedUnlock: true })
+  must(!toolOpen.includes('gamma'), 'an individually unlocked tool should become visible')
+  const toolOff = computeDeny({ records, packs, liveNames: all, unlockedPackIds: [], unlockedToolIds: ['t_c'], allowUngroupedUnlock: false })
+  must(toolOff.includes('gamma'), 'the single-tool switch must gate the remembered unlock')
+
+  const always = computeDeny({ records, packs: [{ ...packs[0], alwaysUnlocked: true }], liveNames: all, unlockedPackIds: [], unlockedToolIds: [], allowUngroupedUnlock: false })
+  must(!always.includes('alpha'), 'an always-unlocked pack should reveal its members')
+  return `${locked.length}/${packOpen.length}/${toolOpen.length}`
+})
+
+record('buildUnlockTool exposes list/unlock/lock and the pack/tool target', () => {
+  const unlock = buildUnlockTool(null, () => undefined)
+  must(unlock.name === UNLOCK_TOOL_NAME, `unlock tool name: ${describe(unlock.name)}`)
+  const actions = unlock.parameters?.properties?.action?.enum ?? []
+  for (const action of ['list', 'unlock', 'lock']) must(actions.includes(action), `unlock tool is missing action "${action}"`)
+  must(unlock.parameters.properties.pack !== undefined, 'unlock tool has no "pack" parameter')
+  must(unlock.parameters.properties.tool !== undefined, 'unlock tool has no "tool" parameter')
+  return actions.join('/')
+})
+
+record('per-session unlock state round-trips through unlocks.json', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cts-selfcheck-unlock-'))
+  try {
+    const lib = createStore(root)
+    const tool = lib.create({
+      name: 'selfcheck_unlock_tool',
+      description: '仅用于自检',
+      code: 'def run(args):\n    return {"ok": True}\n',
+    })
+    const pack = lib.createPack({ name: '自检解锁包', tools: ['selfcheck_unlock_tool'] })
+    must(lib.unlocks('session-a').packs.length === 0, 'new session should have no unlocks')
+    lib.setUnlocks('session-a', { packs: [pack.id], tools: [tool.id] })
+    const reopened = createStore(root).unlocks('session-a')
+    must(reopened.packs[0] === pack.id, 'pack unlock did not persist')
+    must(reopened.tools[0] === tool.id, 'single-tool unlock did not persist')
+    lib.clearUnlocks('session-a')
+    must(lib.unlocks('session-a').packs.length === 0, 'clearUnlocks did not clear the session')
+    must(existsSync(join(root, 'unlocks.json')), 'unlocks.json was not written')
+    return 'packs + tools persisted'
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 // ---------------------------------------------------------------------------

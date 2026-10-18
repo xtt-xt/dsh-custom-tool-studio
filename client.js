@@ -204,8 +204,12 @@ window.__ModuleLoader__.load({
       'delete.cancel': '取消',
       'delete.error': '删除失败：{message}',
       'settings.button': '设置',
-      'settings.title': '审批设置',
-      'settings.desc': 'AI 用 custom_tool_manage 做这些管理操作时，要不要先问你。危险工具的执行审批始终生效，不受这里影响。',
+      'settings.title': '设置',
+      'settings.desc': '管理 AI 使用自定义工具的方式：解锁模式、未分组工具的单独解锁，以及 create / update / delete 的管理审批。危险工具的执行审批始终生效，不受这里影响。',
+      'settings.unlockMode': 'AI 主动解锁模式',
+      'settings.unlockModeHint': '开启后，每个对话初始只看到管理工具和解锁工具；AI 解锁工具包后包内工具才可见。每个对话单独解锁；「始终解锁」的包不受影响。已有对话会立即隐藏未解锁工具。',
+      'settings.allowUngroupedUnlock': '允许单独解锁未分组工具',
+      'settings.allowUngroupedUnlockHint': '开启后，AI 可以用 custom_tool_unlock 的 tool 参数单独解锁某个未分组工具；关闭时未分组工具只有放进工具包才能解锁。仅在解锁模式开启时有意义。',
       'settings.approveCreate': '创建工具需要审批',
       'settings.approveCreateHint': 'AI 新建自定义工具时先弹审批。',
       'settings.approveUpdate': '修改工具需要审批',
@@ -215,11 +219,13 @@ window.__ModuleLoader__.load({
       'settings.save': '保存设置',
       'settings.saving': '保存中…',
       'settings.error': '保存失败：{message}',
-      'settings.saved': '审批设置已保存',
+      'settings.saved': '设置已保存',
       'page.createPack': '新建工具包',
       'pack.count': '{n} 个工具 · 启用 {on}',
       'pack.toggle': '一键启用或停用工具包 {name}',
       'pack.mixed': '部分启用',
+      'pack.alwaysUnlocked': '始终解锁',
+      'pack.ungroupedUnlockable': '可单独解锁',
       'pack.empty': '这个工具包里还没有工具。点「编辑」把工具加进来。',
       'pack.ungrouped': '未分组工具',
       'pack.ungroupedHint': '还没有归入工具包的工具。',
@@ -241,6 +247,8 @@ window.__ModuleLoader__.load({
       'packEditor.membersEmpty': '还没有可加入的自定义工具，先建一个工具再来分组。',
       'packEditor.memberOff': '已停用',
       'packEditor.memberOther': '现在在「{pack}」，勾选会移进本包',
+      'packEditor.alwaysUnlocked': '始终解锁（所有对话可见）',
+      'packEditor.alwaysUnlockedHint': '开启后，这个包在任何对话里都无需解锁即可见。仅在解锁模式开启时有意义。',
       'packEditor.cancel': '取消',
       'packEditor.saveCreate': '创建工具包',
       'packEditor.saveEdit': '保存修改',
@@ -360,8 +368,12 @@ window.__ModuleLoader__.load({
       'delete.cancel': 'Cancel',
       'delete.error': 'Delete failed: {message}',
       'settings.button': 'Settings',
-      'settings.title': 'Approval settings',
-      'settings.desc': 'Ask before the AI performs these management operations. Executing a dangerous tool always asks and is not affected by this page.',
+      'settings.title': 'Settings',
+      'settings.desc': 'Control how the AI uses custom tools: unlock mode, single-tool unlocking for ungrouped tools, and create / update / delete approvals. Executing a dangerous tool always asks and is not affected by this page.',
+      'settings.unlockMode': 'AI tool unlock mode',
+      'settings.unlockModeHint': 'When on, each conversation starts with only the management and unlock tools; pack tools appear after the AI unlocks them. Unlocks are per conversation; always-unlocked packs are exempt. Existing conversations hide locked tools immediately.',
+      'settings.allowUngroupedUnlock': 'Allow unlocking ungrouped tools individually',
+      'settings.allowUngroupedUnlockHint': 'When on, the AI may unlock a single ungrouped tool via custom_tool_unlock\'s tool argument; when off, ungrouped tools must join a pack to be unlocked. Only meaningful while unlock mode is on.',
       'settings.approveCreate': 'Approve creating a tool',
       'settings.approveCreateHint': 'Ask before the AI creates a custom tool.',
       'settings.approveUpdate': 'Approve editing a tool',
@@ -371,11 +383,13 @@ window.__ModuleLoader__.load({
       'settings.save': 'Save settings',
       'settings.saving': 'Saving…',
       'settings.error': 'Could not save: {message}',
-      'settings.saved': 'Approval settings saved',
+      'settings.saved': 'Settings saved',
       'page.createPack': 'New pack',
       'pack.count': '{n} tools · {on} enabled',
       'pack.toggle': 'Enable or disable tool pack {name}',
       'pack.mixed': 'Partially enabled',
+      'pack.alwaysUnlocked': 'Always unlocked',
+      'pack.ungroupedUnlockable': 'Individually unlockable',
       'pack.empty': 'This pack has no tools yet. Use “Edit” to add some.',
       'pack.ungrouped': 'Ungrouped tools',
       'pack.ungroupedHint': 'No tool has been grouped into a pack yet.',
@@ -397,6 +411,8 @@ window.__ModuleLoader__.load({
       'packEditor.membersEmpty': 'No custom tools yet — create a tool first, then group it.',
       'packEditor.memberOff': 'Disabled',
       'packEditor.memberOther': 'Currently in “{pack}”; checking moves it here',
+      'packEditor.alwaysUnlocked': 'Always unlocked (visible in every conversation)',
+      'packEditor.alwaysUnlockedHint': 'When on, this pack is visible in every conversation without unlocking. Only meaningful while unlock mode is on.',
       'packEditor.cancel': 'Cancel',
       'packEditor.saveCreate': 'Create pack',
       'packEditor.saveEdit': 'Save changes',
@@ -1542,6 +1558,12 @@ select.cts-input { cursor: pointer; }
                 : null,
               h('h3', { className: 'cts-packName' }, name),
               h('span', { className: 'cts-badge' }, fmt(t, 'pack.count', { n: tools.length, on: enabledCount })),
+              pack !== null && pack.alwaysUnlocked === true
+                ? h('span', { className: 'cts-badge' }, t('pack.alwaysUnlocked'))
+                : null,
+              pack === null && props.allowUngroupedUnlock === true
+                ? h('span', { className: 'cts-badge' }, t('pack.ungroupedUnlockable'))
+                : null,
               mixed ? h('span', { className: 'cts-badge cts-badgeMixed' }, t('pack.mixed')) : null),
             description !== ''
               ? h('p', { className: 'cts-packDesc', title: description }, description)
@@ -1614,6 +1636,7 @@ select.cts-input { cursor: pointer; }
               pack,
               tools: asArray(group?.tools),
               busy: pack !== null && props.isPendingPack(asText(pack.id, '')),
+              allowUngroupedUnlock: props.allowUngroupedUnlock === true,
               isPending: props.isPending,
               onTogglePack: props.onTogglePack,
               onEditPack: props.onEditPack,
@@ -2106,6 +2129,7 @@ select.cts-input { cursor: pointer; }
       const [draft, setDraft] = React.useState(() => ({
         name: asText(pack.name, ''),
         description: asText(pack.description, ''),
+        alwaysUnlocked: pack.alwaysUnlocked === true,
       }));
       const [selected, setSelected] = React.useState(() => {
         const chosen = {};
@@ -2156,6 +2180,7 @@ select.cts-input { cursor: pointer; }
             name,
             description: draft.description.trim(),
             tools: memberNames,
+            alwaysUnlocked: draft.alwaysUnlocked === true,
           };
           const body = isEdit
             ? await api.updatePack({ ...payload, id: packId })
@@ -2251,6 +2276,16 @@ select.cts-input { cursor: pointer; }
                   ? h('span', { className: 'cts-checkDesc' }, fmt(t, 'packEditor.memberOther', { pack: otherPackName }))
                   : null));
           }))),
+      h('div', { className: 'cts-switchRow' },
+        h('span', { className: 'cts-switchText' },
+          h('span', { className: 'cts-switchLabel' }, t('packEditor.alwaysUnlocked')),
+          h('span', { className: 'cts-switchHint' }, t('packEditor.alwaysUnlockedHint'))),
+        h(Switch, {
+          checked: draft.alwaysUnlocked === true,
+          label: t('packEditor.alwaysUnlocked'),
+          disabled: submitting,
+          onChange: (next) => update('alwaysUnlocked', next === true),
+        })),
       hostError !== '' ? h('div', { className: 'cts-alert', role: 'alert' }, hostError) : null);
     }
 
@@ -2349,6 +2384,8 @@ select.cts-input { cursor: pointer; }
       };
 
       const rows = [
+        ['unlockMode', 'settings.unlockMode', 'settings.unlockModeHint'],
+        ['allowUngroupedUnlock', 'settings.allowUngroupedUnlock', 'settings.allowUngroupedUnlockHint'],
         ['approveCreate', 'settings.approveCreate', 'settings.approveCreateHint'],
         ['approveUpdate', 'settings.approveUpdate', 'settings.approveUpdateHint'],
         ['approveDelete', 'settings.approveDelete', 'settings.approveDeleteHint'],
@@ -2395,14 +2432,20 @@ select.cts-input { cursor: pointer; }
     // #endregion
     // #region page
 
-    /** Approval switches, mirrored from the Host defaults. */
-    const DEFAULT_SETTINGS = { approveCreate: false, approveUpdate: false, approveDelete: true };
+    /** Global switches, mirrored from the Host defaults. */
+    const DEFAULT_SETTINGS = {
+      unlockMode: false,
+      allowUngroupedUnlock: false,
+      approveCreate: false,
+      approveUpdate: false,
+      approveDelete: true,
+    };
 
-    /** Coerce untrusted settings JSON into the three booleans. */
+    /** Coerce untrusted settings JSON into the five booleans. */
     function normalizeSettings(value) {
       const source = isPlainObject(value) ? value : {};
       const out = {};
-      for (const key of ['approveCreate', 'approveUpdate', 'approveDelete']) {
+      for (const key of ['unlockMode', 'allowUngroupedUnlock', 'approveCreate', 'approveUpdate', 'approveDelete']) {
         out[key] = typeof source[key] === 'boolean' ? source[key] : DEFAULT_SETTINGS[key];
       }
       return out;
@@ -2634,6 +2677,7 @@ select.cts-input { cursor: pointer; }
         body = h(ToolList, {
           t,
           groups,
+          allowUngroupedUnlock: snapshot.settings.allowUngroupedUnlock === true,
           isPending,
           isPendingPack,
           onTogglePack: togglePack,

@@ -62,7 +62,13 @@ const engine = {
     settingsState = store.saveSettings(patch)
     return settingsState
   },
-  defaultSettings: () => ({ approveCreate: false, approveUpdate: false, approveDelete: true }),
+  defaultSettings: () => ({
+    unlockMode: false,
+    allowUngroupedUnlock: false,
+    approveCreate: false,
+    approveUpdate: false,
+    approveDelete: true,
+  }),
   runRecord: (record, args) => runPython(record, args, { rootDir: root }),
 }
 
@@ -103,30 +109,56 @@ const empty = await call(ROUTES.list)
 check('list empty', empty.status === 200 && Array.isArray(empty.json.tools) && empty.json.tools.length === 0)
 check(
   'list carries settings',
-  empty.json.settings?.approveCreate === false && empty.json.settings?.approveDelete === true,
+  empty.json.settings?.unlockMode === false
+    && empty.json.settings?.allowUngroupedUnlock === false
+    && empty.json.settings?.approveCreate === false
+    && empty.json.settings?.approveDelete === true,
   JSON.stringify(empty.json.settings),
 )
 
 const settingsRead = await call(ROUTES.settings)
-check('settings GET defaults', settingsRead.status === 200 && settingsRead.json.settings.approveDelete === true && settingsRead.json.defaults.approveDelete === true)
+check(
+  'settings GET defaults',
+  settingsRead.status === 200
+    && settingsRead.json.settings.unlockMode === false
+    && settingsRead.json.settings.allowUngroupedUnlock === false
+    && settingsRead.json.settings.approveDelete === true
+    && settingsRead.json.defaults.unlockMode === false,
+)
 
-const settingsWrite = await call(ROUTES.settings, { approveCreate: true, approveDelete: false })
+const settingsWrite = await call(ROUTES.settings, { unlockMode: true, allowUngroupedUnlock: true, approveCreate: true, approveDelete: false })
 check(
   'settings POST',
-  settingsWrite.status === 200 && settingsWrite.json.settings.approveCreate === true && settingsWrite.json.settings.approveDelete === false,
+  settingsWrite.status === 200
+    && settingsWrite.json.settings.unlockMode === true
+    && settingsWrite.json.settings.allowUngroupedUnlock === true
+    && settingsWrite.json.settings.approveCreate === true
+    && settingsWrite.json.settings.approveDelete === false,
   JSON.stringify(settingsWrite.json.settings),
 )
 
 const settingsAfter = await call(ROUTES.list)
-check('settings persisted into list', settingsAfter.json.settings.approveCreate === true && settingsAfter.json.settings.approveDelete === false)
+check(
+  'settings persisted into list',
+  settingsAfter.json.settings.unlockMode === true
+    && settingsAfter.json.settings.allowUngroupedUnlock === true
+    && settingsAfter.json.settings.approveCreate === true
+    && settingsAfter.json.settings.approveDelete === false,
+)
 
 const settingsIgnoreJunk = await call(ROUTES.settings, { approveUpdate: 'yes', nonsense: 1 })
 check(
   'settings ignores non-booleans',
   settingsIgnoreJunk.json.settings.approveUpdate === false && !('nonsense' in settingsIgnoreJunk.json.settings),
 )
-// Restore the default delete gate so the rest of the run matches the shipped defaults.
-await call(ROUTES.settings, { approveCreate: false, approveUpdate: false, approveDelete: true })
+// Restore the shipped defaults so the rest of the run matches them.
+await call(ROUTES.settings, {
+  unlockMode: false,
+  allowUngroupedUnlock: false,
+  approveCreate: false,
+  approveUpdate: false,
+  approveDelete: true,
+})
 
 const created = await call(ROUTES.create, {
   name: 'route_echo',
@@ -183,13 +215,15 @@ const packCreated = await call(ROUTES.packCreate, {
   name: '演示包',
   description: '路由测试用的工具包',
   tools: ['route_echo'],
+  alwaysUnlocked: true,
 })
 check(
   'pack create',
   packCreated.status === 200
     && packCreated.json.pack.name === '演示包'
     && packCreated.json.pack.toolCount === 1
-    && packCreated.json.pack.tools[0] === 'route_echo',
+    && packCreated.json.pack.tools[0] === 'route_echo'
+    && packCreated.json.pack.alwaysUnlocked === true,
   JSON.stringify(packCreated.json.pack?.tools),
 )
 const packId = packCreated.json.pack.id
@@ -210,12 +244,14 @@ const packUpdated = await call(ROUTES.packUpdate, {
   id: packId,
   name: '改名包',
   description: '改过描述',
+  alwaysUnlocked: false,
 })
 check(
   'pack update',
   packUpdated.status === 200
     && packUpdated.json.pack.name === '改名包'
     && packUpdated.json.pack.description === '改过描述'
+    && packUpdated.json.pack.alwaysUnlocked === false
     && packUpdated.json.pack.toolCount === 1,
 )
 

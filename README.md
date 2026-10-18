@@ -38,6 +38,7 @@
 | 试运行 | 页面「测试」或 AI 的 `custom_tool_manage` → `action="test"`，直接传参数跑一次 |
 | 危险工具 | 标记后**每次执行前**都走 DSH 内置审批，和内置的自动审查兼容 |
 | 工具包 | 把几个工具归到一个有名称、有描述的分组里，一键启停整包；工具仍各自注册 |
+| AI 主动解锁 | 开启后每个对话只看到管理/解锁两个工具，AI 解锁工具包后才出现包内工具；支持「始终解锁」与未分组工具单独解锁 |
 | 统一存储 | 所有工具存在一个 `tools.json`，可整体备份、迁移、删除 |
 | 一键恢复 | `restore.ps1` 把插件从 profile 里干净卸载，可选清空工具数据 |
 
@@ -175,6 +176,30 @@ def run(args):
 - 工具多起来以后按用途分类：`文本处理`、`数据处理`、`运维脚本`……；
 - 调试某批工具时整包停掉，避免它们出现在模型的工具列表里；需要时整包打开。
 
+### 5.3 AI 主动解锁模式（deferred tool loading）
+
+通用叫法是 **deferred tool loading（工具延迟加载）/ progressive tool disclosure（渐进式工具披露）**；Anthropic 侧叫 Tool Search / `defer_loading`，OpenAI Responses 侧叫 deferred tools。插件用的是 DSH 内核自带的「会话中途增加工具」通道：**解锁只改变当前 agent 的可见性，不重新注册工具**。
+
+开启方式：页面顶部「设置」→ 打开「AI 主动解锁模式」。
+
+开启后：
+
+1. 每个对话初始只看到两个自定义工具：
+   - `custom_tool_manage`（管理工具/工具包）
+   - `custom_tool_unlock`（解锁工具包）
+2. 包里的工具默认**不可见、不可调用**；AI 调 `custom_tool_unlock` 的 `action="unlock"`、`pack="包名"` 后，包内启用的工具在**下一轮请求**出现。
+3. **不同对话单独解锁**：解锁状态按 session id 记在 `unlocks.json`；新对话 / 子代理不会继承。DSH 重启或插件重挂载后会按文件恢复。
+4. **始终解锁**：编辑工具包 → 打开「始终解锁（所有对话可见）」。这个包在任何对话里都无需解锁，适合常用工具。也可以让 AI 用 `custom_tool_manage` 的 `pack_update` 传 `alwaysUnlocked=true`。
+5. **未分组工具**：编辑工具 → 把它放进某个工具包是推荐做法。若确实要保留未分组，可在「设置」里打开「允许单独解锁未分组工具」，然后 AI 用 `custom_tool_unlock` 的 `tool="工具名"` 单独解锁；关闭这个开关时，未分组工具不能单独解锁，只能放进工具包。
+6. 关闭解锁模式：所有启用工具立即恢复可见；`unlocks.json` 里的记录保留，下次开启继续生效。
+
+注意：
+
+- 这是**可见性/上下文管理**，不是权限边界。危险工具即使被解锁，每次执行仍然走 DSH 内置审批。
+- 解锁/锁定不会改变工具的启用状态；要停用整包请用工具包开关或 `pack_set_enabled`。
+- 可见工具集变化会让该对话的提示前缀缓存失效一次，这是解锁的固有成本。
+- 插件重挂载（bundle 禁用→启用）时，旧掩码会先释放、再按 `unlocks.json` 重建，不会出现「解锁了却仍不可见」的叠加。
+
 ---
 
 ## 6. AI 侧工具 `custom_tool_manage`
@@ -194,8 +219,8 @@ def run(args):
 | `test` | 用给定参数试运行一次 | `name`（`args` 可选） |
 | `pack_list` | 列出工具包及各自成员 | – |
 | `pack_get` | 查看一个工具包的成员与描述 | `pack`（或 `name`） |
-| `pack_create` | 新建工具包，可同时指定成员 | `name`（`description`/`tools` 可选） |
-| `pack_update` | 改包描述 / 改成员 / 改名 | `pack` + 至少一项（`description`/`tools`/`name`） |
+| `pack_create` | 新建工具包，可同时指定成员 | `name`（`description`/`tools`/`alwaysUnlocked` 可选） |
+| `pack_update` | 改包描述 / 改成员 / 改名 / 改始终解锁 | `pack` + 至少一项（`description`/`tools`/`alwaysUnlocked`/`name`） |
 | `pack_delete` | 删除工具包（**工具保留**，变未分组） | `pack` |
 | `pack_set_enabled` | 一键启停整包 | `pack`、`enabled` |
 
@@ -213,6 +238,7 @@ def run(args):
 | `enabled` | boolean | 是否启用，默认 `true`；停用的工具不注册 |
 | `pack` | string | 包名或包 id：`pack_get/update/delete/set_enabled` 用它定位包；`create`/`update` 用它把**这个工具**放进该包，传空字符串表示移出 |
 | `tools` | string[] | 包成员（工具名数组）：`pack_create` 可选；`pack_update` 给了就整体替换成员（没列出的工具移出该包但保留） |
+| `alwaysUnlocked` | boolean | 工具包是否「始终解锁」：`true` 时任何对话都无需 `custom_tool_unlock` 即可见。仅在解锁模式开启时有意义 |
 | `args` | object | 仅 `test` 使用：传给 `run(args)` 的参数对象 |
 
 ### 6.3 对话示例
@@ -239,6 +265,32 @@ def run(args):
 
 模型会依次调用 `pack_create`（`name="文本处理"`, `description=...`, `tools=["python_word_count","python_clean_text"]`）和 `pack_set_enabled`（`pack="文本处理"`, `enabled=false`）。
 
+### 6.4 解锁工具 `custom_tool_unlock`
+
+只在开启「AI 主动解锁模式」后有意义。参数：
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `action` | string | `list` / `unlock` / `lock`（必填） |
+| `pack` | string | 工具包名称或 id；与 `tool` 二选一 |
+| `tool` | string | 未分组工具名；与 `pack` 二选一，需要设置开启「允许单独解锁未分组工具」 |
+
+`action` 行为：
+
+| action | 作用 |
+|---|---|
+| `list` | 列出所有工具包、未分组工具及各自状态（未解锁 / 当前对话已解锁 / 始终解锁 / 已停用），并说明当前设置 |
+| `unlock` | 解锁整个包（`pack=...`）或一个未分组工具（`tool=...`）；下一轮请求生效 |
+| `lock` | 反向收起；`alwaysUnlocked` 的包不能单独锁定，要去页面关闭「始终解锁」 |
+
+示例：
+
+```text
+我需要用 mcdev-docs 里的工具查文档。
+```
+
+模型会先 `custom_tool_unlock` `action="list"`，再 `action="unlock"`、`pack="mcdev-docs"`；包内工具在下一轮出现。属于某个包的工具不能用 `tool=...` 绕过包，必须整包解锁。
+
 ---
 
 ## 7. 数据存放位置
@@ -260,13 +312,14 @@ C:\Users\acer\.dsh\custom-tools
 | 路径 | 内容 | 说明 |
 |---|---|---|
 | `tools.json` | 工具记录（唯一真源） | 名称、标题、描述、参数、代码、dangerous、enabled、`packId`（所属工具包，空=未分组）、时间戳 |
-| `packs.json` | 工具包记录 | `id`、`name`、`description`、时间戳；成员关系不在这个文件里，而在各工具的 `packId` 上 |
-| `settings.json` | 三个审批开关 | `approveCreate` / `approveUpdate` / `approveDelete`；文件不存在时用默认值（删除=开） |
+| `packs.json` | 工具包记录 | `id`、`name`、`description`、`alwaysUnlocked`（是否始终解锁）、时间戳；成员关系不在这个文件里，而在各工具的 `packId` 上 |
+| `settings.json` | 全局开关 | `unlockMode`（AI 主动解锁模式）、`allowUngroupedUnlock`（允许单独解锁未分组工具）、`approveCreate` / `approveUpdate` / `approveDelete`；文件不存在时用默认值（解锁模式关、删除审批开） |
+| `unlocks.json` | 按对话的解锁状态 | `sessions.<sessionId>.packs`（已解锁的工具包 id）+ `.tools`（已单独解锁的未分组工具 id）；最多保留最近 200 个对话 |
 | `scripts\<工具名>.py` | 每个工具的代码副本 | 方便直接阅读/备份；**直接改这里不会生效**，执行用的是 `tools.json` 里的 code |
 | `runs\r_<...>\` | 每次执行的临时目录 | 含 `tool.py`、`args.json`、`result.json`、`stdout.txt`、`stderr.txt`；自动只留最新 30 个 |
 | `runner.py` | 自动生成的 Python 执行器 | 不要手改，会被覆盖 |
 
-备份/迁移：直接复制整个 `custom-tools` 目录即可（`tools.json` + `packs.json` 一起复制才算完整）。恢复时把目录放回原位（或设 `DSH_CUSTOM_TOOLS_DIR`），重启 DSH。
+备份/迁移：直接复制整个 `custom-tools` 目录即可（`tools.json` + `packs.json` + `settings.json` + `unlocks.json` 一起复制才算完整）。恢复时把目录放回原位（或设 `DSH_CUSTOM_TOOLS_DIR`），重启 DSH。
 
 > 只把 `packs.json` 删掉不会丢工具：每个工具的 `packId` 找不到对应的包时，它会作为「未分组工具」照常列出来。
 
@@ -329,7 +382,24 @@ node -e "const p=require('C:/Users/acer/.dsh/profiles/desktop/package.json');con
 node F:\xtt\workspace\dsh-custom-tool-studio\selfcheck.mjs
 ```
 
-期望最后一行是 `SELF-CHECK OK`（退出码 0）。它会检查：工具名校验、参数 schema 归一化、输入校验、`buildToolDefinition` 的输出结构 / render 文本块 / execute 返回键与声明 schema 一致、`custom_tool_manage` 名称与 `pack_*` 动作、工具包的分组 / 整包开关 / 删除后保留工具。
+期望最后一行是 `SELF-CHECK OK`（退出码 0）。它会检查：工具名校验、参数 schema 归一化、输入校验、`buildToolDefinition` 的输出结构 / render 文本块 / execute 返回键与声明 schema 一致、`custom_tool_manage` 名称与 `pack_*` 动作、工具包的分组 / 整包开关 / 删除后保留工具、`alwaysUnlocked`、`custom_tool_unlock` 的 list/unlock/lock、`computeDeny` 的基线/包/单工具规则，以及 `unlocks.json` 往返。
+
+完整离线套件（7 个）：
+
+```powershell
+node F:\xtt\workspace\dsh-custom-tool-studio\test\run.mjs
+```
+
+期望 `ALL SUITES PASS (7)`。
+
+线上验收解锁模式（建议按顺序）：
+
+1. 页面「设置」打开「AI 主动解锁模式」和「允许单独解锁未分组工具」，保存；
+2. 新对话里模型只应看到 `custom_tool_manage` + `custom_tool_unlock`；内置工具不受影响；
+3. 让 AI 执行 `custom_tool_unlock` `action="list"`，再 `action="unlock"`、`pack="<包名>"`；下一轮包内工具应出现；
+4. 另开一个对话 / 子代理：它应显示「当前对话 0 个已解锁」，看不到上一个对话解锁的工具；
+5. 给某个包打开「始终解锁」后，新对话无需解锁即可看到它的成员；
+6. 关闭解锁模式：所有启用工具立即恢复可见；再打开，`unlocks.json` 里的记录继续生效。
 
 完整离线测试（宿主 store / HTTP 路由 / 审批门 / 页面字典 / 页面渲染）：
 
@@ -419,6 +489,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "F:\xtt\workspace\dsh-custom
 | 保存后模型看不到新工具 | 检查「启用」开关；停用的工具不注册。新建的工具在**下一轮请求**可见（不需要重启 DSH）。 |
 | 左侧没有「自定义工具」入口 | 插件没装成功或装完没重启。先确认 profile 的 `dsh.profile.bundles` 含包名（见 8.3），再完全退出 DSH 重新启动。 |
 | 工具包里的工具没变灰/没停用 | 包开关改的是**每个成员自己的启用标记**；如果某个工具是后来才加进包的，重开一次页面即可看到最新状态。包本身没有独立开关。 |
+| 开启解锁模式后工具突然消失 | 预期行为：每个对话初始只保留 `custom_tool_manage` + `custom_tool_unlock`。让 AI 解锁对应工具包，或在页面把该包设为「始终解锁」；也可以在「设置」里关掉解锁模式立即恢复。 |
+| AI 说未分组工具不能单独解锁 | 「设置」里的「允许单独解锁未分组工具」没开。开启后 AI 可用 `custom_tool_unlock` 的 `tool=...`；或者直接把工具放进某个工具包。 |
+| 解锁成功但模型还是看不到工具 | 解锁在**下一轮请求**生效；同一轮不会立刻变。若重启过 DSH 仍不可见，检查 `unlocks.json` 里的 session id 是否是当前对话，以及 `[custom-tool-studio]` 日志里有没有 `install unlock mask ... failed`。 |
+| 子代理看不到父对话解锁的工具 | 预期行为：每个 agent / 对话单独解锁。子代理自己调用 `custom_tool_unlock`，或把包设为始终解锁。 |
+| 插件重挂载后解锁状态错乱 | 正常流程会先释放旧掩码、再按 `unlocks.json` 重建；若仍异常，查看日志里的 `install unlock mask` / `dispose`，必要时删除 `unlocks.json` 让该对话重新解锁。 |
 | 页面能开但一操作就报错 | 看 DSH 启动日志里的 `[custom-tool-studio]` 警告（host 挂载失败会被记录）；也看页面上的错误文字。 |
 | 改了 `scripts\*.py` 不生效 | 正常：`tools.json` 才是真源，`scripts\` 只是代码副本。请在页面/让 AI 改，或改完用 `custom_tool_manage` 的 `update` 写回。 |
 | 执行超时 | 默认 60 秒；设 `DSH_CUSTOM_TOOL_TIMEOUT_MS`（毫秒）后重启 DSH，或让脚本更快返回。 |
@@ -438,18 +513,21 @@ F:\xtt\workspace\dsh-custom-tool-studio\
 ├─ cordis.patch.yml      # bundle 层：往 loader 树插入 custom-tool-studio
 ├─ index.js              # host 入口：存储、注册、HTTP 路由、dangerous 审批门
 ├─ lib\
-│  ├─ store.js           # tools.json / packs.json 读写 + 输入校验
+│  ├─ store.js           # tools.json / packs.json / settings.json / unlocks.json 读写 + 输入校验
+│  ├─ access.js          # 按 agent 计算 deny 掩码；会话解锁状态与 bundle 重挂清理
 │  ├─ python.js          # Python 探测与执行（stdout/stderr/超时/取消）
-│  ├─ tools.js           # 每个记录 → ToolDefinition；custom_tool_manage（含工具包）
+│  ├─ tools.js           # 每个记录 → ToolDefinition；custom_tool_manage + custom_tool_unlock
 │  └─ routes.js          # /api/custom-tool-studio/* 路由
-├─ client.js             # Web 页面（侧边栏 + 分组列表/编辑/测试/设置）
+├─ client.js             # Web 页面（侧边栏 + 分组列表/编辑/测试/设置/始终解锁）
 ├─ test\                 # 离线测试（node test/run.mjs）
 │  ├─ run.mjs            # 汇总入口
-│  ├─ store.test.mjs     # 记录校验 / 持久化 / 工具包
+│  ├─ store.test.mjs     # 记录校验 / 持久化 / 工具包 / 解锁状态
+│  ├─ access.test.mjs    # deny 掩码、每对话隔离、模式开关、持久化
+│  ├─ unlock-tool.test.mjs # custom_tool_unlock 的 list/unlock/lock
 │  ├─ routes.test.mjs    # HTTP 路由与错误码
 │  ├─ gate.test.mjs      # 危险工具与审批开关
 │  ├─ client-dict.test.mjs   # 字典 zh/en 对齐、用到的 key 都存在
-│  └─ client-render.test.mjs # 纯组件渲染（对话框/分组/编辑器）
+│  └─ client-render.test.mjs # 纯组件渲染（对话框/分组/编辑器/开关）
 ├─ .github\workflows\ci.yml  # 推送后自动跑 selfcheck + 测试
 ├─ scripts\push-api.mjs  # 本机 git push 走不通时，用 GitHub API 提交
 ├─ locale\               # zh / en 文案

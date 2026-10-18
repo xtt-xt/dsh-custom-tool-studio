@@ -101,14 +101,22 @@ check('dialog has a close button', collect(tree, (node) => cls(node).includes('c
 check('title comes from the dictionary', textOf(collect(tree, (node) => cls(node) === 'cts-dialogTitle')[0]) === 'settings.title')
 
 const switches = collect(tree, (node) => node?.props?.role === 'switch')
-check('three approval switches', switches.length === 3, String(switches.length))
+check('five global switches', switches.length === 5, String(switches.length))
 const states = switches.map((node) => node.props['aria-checked'])
-check('defaults: create off, update off, delete on', switches.length === 3 && JSON.stringify(states) === JSON.stringify(['false', 'false', 'true']), states.join(','))
+check(
+  'defaults: unlock off, ungrouped off, create off, update off, delete on',
+  switches.length === 5 && JSON.stringify(states) === JSON.stringify(['false', 'false', 'false', 'false', 'true']),
+  states.join(','),
+)
 
 const labels = collect(tree, (node) => cls(node) === 'cts-switchLabel').map(textOf)
-check('switch labels', labels.join('|') === 'settings.approveCreate|settings.approveUpdate|settings.approveDelete', labels.join('|'))
+check(
+  'switch labels',
+  labels.join('|') === 'settings.unlockMode|settings.allowUngroupedUnlock|settings.approveCreate|settings.approveUpdate|settings.approveDelete',
+  labels.join('|'),
+)
 const hints = collect(tree, (node) => cls(node) === 'cts-switchHint').map(textOf)
-check('switch hints', hints.length === 3 && hints[0] === 'settings.approveCreateHint', hints.join('|'))
+check('switch hints', hints.length === 5 && hints[0] === 'settings.unlockModeHint', hints.join('|'))
 
 const footerButtons = collect(tree, (node) => node?.type === 'button' && (cls(node).includes('cts-primary') || cls(node).includes('cts-ghost')))
 check('footer has exactly cancel + save', footerButtons.length === 2, String(footerButtons.length))
@@ -117,17 +125,33 @@ check('save is the primary button', saveButton !== undefined && textOf(saveButto
 check('cancel uses the shared label', footerButtons.some((node) => textOf(node) === 'editor.cancel'))
 
 // --- all off / untrusted ---------------------------------------------------
-const allOff = render(SettingsDialog({ t, api, settings: { approveCreate: false, approveUpdate: false, approveDelete: false }, onClose() {}, onSaved() {} }))
+const allOff = render(SettingsDialog({
+  t,
+  api,
+  settings: { unlockMode: false, allowUngroupedUnlock: false, approveCreate: false, approveUpdate: false, approveDelete: false },
+  onClose() {},
+  onSaved() {},
+}))
 const offStates = collect(allOff, (node) => node?.props?.role === 'switch').map((node) => node.props['aria-checked'])
-check('all-off renders three "false"', offStates.length === 3 && offStates.every((value) => value === 'false'), offStates.join(','))
+check('all-off renders five "false"', offStates.length === 5 && offStates.every((value) => value === 'false'), offStates.join(','))
 
 const untrusted = render(SettingsDialog({ t, api, settings: 'nonsense', onClose() {}, onSaved() {} }))
 const untrustedStates = collect(untrusted, (node) => node?.props?.role === 'switch').map((node) => node.props['aria-checked'])
-check('untrusted settings fall back to defaults', JSON.stringify(untrustedStates) === JSON.stringify(['false', 'false', 'true']), untrustedStates.join(','))
+check(
+  'untrusted settings fall back to defaults',
+  JSON.stringify(untrustedStates) === JSON.stringify(['false', 'false', 'false', 'false', 'true']),
+  untrustedStates.join(','),
+)
 
-const allOn = render(SettingsDialog({ t, api, settings: { approveCreate: true, approveUpdate: true, approveDelete: true }, onClose() {}, onSaved() {} }))
+const allOn = render(SettingsDialog({
+  t,
+  api,
+  settings: { unlockMode: true, allowUngroupedUnlock: true, approveCreate: true, approveUpdate: true, approveDelete: true },
+  onClose() {},
+  onSaved() {},
+}))
 const onStates = collect(allOn, (node) => node?.props?.role === 'switch').map((node) => node.props['aria-checked'])
-check('all-on renders three "true"', onStates.length === 3 && onStates.every((value) => value === 'true'), onStates.join(','))
+check('all-on renders five "true"', onStates.length === 5 && onStates.every((value) => value === 'true'), onStates.join(','))
 
 // --- page header -----------------------------------------------------------
 const locale = {
@@ -150,7 +174,7 @@ check('primary button carries the inverse label class', cls(headerButtons[header
 const toolA = { id: 't_a', name: 'tool_a', description: 'A', enabled: true, dangerous: false }
 const toolB = { id: 't_b', name: 'tool_b', description: 'B', enabled: false, dangerous: false }
 const toolC = { id: 't_c', name: 'tool_c', description: 'C', enabled: true, dangerous: false }
-const packOne = { id: 'p_1', name: '文本包', description: '处理文本' }
+const packOne = { id: 'p_1', name: '文本包', description: '处理文本', alwaysUnlocked: true }
 const packTwo = { id: 'p_2', name: '空包', description: '' }
 const grouped = groupTools(
   [{ ...toolA, packId: 'p_1' }, { ...toolB, packId: 'p_1' }, { ...toolC, packId: '' }],
@@ -173,6 +197,7 @@ const noop = () => {}
 const listProps = {
   t,
   groups: grouped,
+  allowUngroupedUnlock: true,
   isPending: () => false,
   isPendingPack: () => false,
   onTogglePack: noop,
@@ -199,6 +224,11 @@ const packDescs = collect(listTree, (node) => cls(node) === 'cts-packDesc').map(
 check('pack description rendered, empty one omitted', packDescs.length === 1 && packDescs[0] === '处理文本', packDescs.join('|'))
 const countBadges = collect(listTree, (node) => cls(node) === 'cts-badge' && textOf(node) === 'pack.count')
 check('count badge per group', countBadges.length === 3, String(countBadges.length))
+
+const alwaysUnlockedBadges = collect(listTree, (node) => cls(node) === 'cts-badge' && textOf(node) === 'pack.alwaysUnlocked')
+check('always-unlocked pack gets a badge', alwaysUnlockedBadges.length === 1, String(alwaysUnlockedBadges.length))
+const ungroupedUnlockBadges = collect(listTree, (node) => cls(node) === 'cts-badge' && textOf(node) === 'pack.ungroupedUnlockable')
+check('ungrouped card shows the single-tool badge when enabled', ungroupedUnlockBadges.length === 1, String(ungroupedUnlockBadges.length))
 
 const packSwitches = collect(listTree, (node) => node?.props?.role === 'switch' && node.props['aria-label'] === 'pack.toggle')
 const rowSwitches = collect(listTree, (node) => node?.props?.role === 'switch' && node.props['aria-label'] === 'row.toggle')
@@ -233,6 +263,14 @@ check('pack editor seeds the description', packEditorInputs[1].props.value === '
 const checkboxes = collect(packEditorTree, (node) => node?.type === 'input' && node.props.type === 'checkbox')
 check('one checkbox per tool', checkboxes.length === 3, String(checkboxes.length))
 check('members preselected from packId', JSON.stringify(checkboxes.map((node) => node.props.checked)) === JSON.stringify([true, true, false]), checkboxes.map((node) => node.props.checked).join(','))
+const packEditorSwitches = collect(packEditorTree, (node) => node?.props?.role === 'switch')
+check(
+  'pack editor exposes one always-unlocked switch, seeded from the pack',
+  packEditorSwitches.length === 1
+    && packEditorSwitches[0].props['aria-label'] === 'packEditor.alwaysUnlocked'
+    && packEditorSwitches[0].props['aria-checked'] === 'true',
+  `${packEditorSwitches.length}/${packEditorSwitches[0]?.props?.['aria-checked']}`,
+)
 const packEditorFooter = collect(packEditorTree, (node) => node?.type === 'button' && (cls(node).includes('cts-primary') || cls(node).includes('cts-ghost')))
 check('pack editor footer cancel + save', packEditorFooter.length === 2 && textOf(packEditorFooter[1]) === 'packEditor.saveEdit', packEditorFooter.map(textOf).join('|'))
 

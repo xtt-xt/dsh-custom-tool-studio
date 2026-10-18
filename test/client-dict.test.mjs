@@ -99,7 +99,27 @@ for (const match of source.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) used.add(mat
 for (const match of source.matchAll(/\bfmt\(\s*t\s*,\s*'([a-zA-Z0-9_.]+)'/g)) used.add(match[1])
 const missing = [...used].filter((key) => !(key in zh))
 check('every used key exists', missing.length === 0, missing.join(','))
-check('settings keys present', ['settings.button', 'settings.title', 'settings.approveCreate', 'settings.approveUpdate', 'settings.approveDelete', 'settings.save', 'settings.saving', 'settings.error'].every((key) => key in zh))
+check(
+  'settings keys present',
+  [
+    'settings.button',
+    'settings.title',
+    'settings.unlockMode',
+    'settings.unlockModeHint',
+    'settings.allowUngroupedUnlock',
+    'settings.allowUngroupedUnlockHint',
+    'settings.approveCreate',
+    'settings.approveUpdate',
+    'settings.approveDelete',
+    'settings.save',
+    'settings.saving',
+    'settings.error',
+  ].every((key) => key in zh),
+)
+check(
+  'pack unlock keys present',
+  ['pack.alwaysUnlocked', 'pack.ungroupedUnlockable', 'packEditor.alwaysUnlocked', 'packEditor.alwaysUnlockedHint'].every((key) => key in zh),
+)
 
 console.log(`\nzh keys: ${zhKeys.length}, used keys: ${used.size}`)
 console.log(fails.length === 0 ? '\nALL PASS' : `\nFAILED: ${fails.join(', ')}`)

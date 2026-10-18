@@ -18,7 +18,8 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createStore, DEFAULT_SETTINGS } from './lib/store.js'
 import { detectPython, runPython } from './lib/python.js'
-import { buildManageTool, buildToolDefinition } from './lib/tools.js'
+import { buildManageTool, buildToolDefinition, buildUnlockTool } from './lib/tools.js'
+import { createAccessController } from './lib/access.js'
 import { makeRoutes } from './lib/routes.js'
 import { makePreExecuteListener } from './lib/gate.js'
 
@@ -65,6 +66,34 @@ function mount(ctx) {
   const registered = new Map()
   const registrationErrors = new Map()
   let dangerousNames = new Set()
+
+  /** Optional agent service: without it the plugin still manages tools. */
+  const agentService = () => {
+    // Do not touch `ctx.agents` directly: this plugin does not declare it as a
+    // hard dependency, and optional services must be read through `ctx.get`.
+    if (typeof ctx.get !== 'function') return undefined
+    try {
+      return ctx.get('agents')
+    } catch {
+      return undefined
+    }
+  }
+  /** Current initiating agent (lazy: the service may exist only after mount). */
+  const currentAgent = () => {
+    const service = agentService()
+    return typeof service?.currentInitiator === 'function' ? service.currentInitiator() : undefined
+  }
+  /** Per-conversation visibility controller (unlock mode). Null = unavailable. */
+  let access = null
+  try {
+    access = createAccessController({ ctx, store, registered, logger: ctx.logger })
+  } catch (error) {
+    try {
+      ctx.logger?.warn?.(`[custom-tool-studio] unlock controller unavailable: ${error instanceof Error ? error.message : String(error)}`)
+    } catch {
+      /* ignore */
+    }
+  }
 
   /** Run one record's Python code. */
   const runRecord = (record, args, options = {}) => runPython(record, args, {
@@ -123,6 +152,8 @@ function mount(ctx) {
       }
     }
     dangerousNames = nextDangerous
+    // Registration changes can add/remove names the per-agent masks must cover.
+    access?.reconcileAll()
   }
 
   /** One record plus its live registration status. */
@@ -229,7 +260,13 @@ function mount(ctx) {
       return store.settings()
     },
     setSettings(patch) {
-      return store.saveSettings(patch)
+      const next = store.saveSettings(patch)
+      // Toggling the mode (or the ungrouped switch) changes visibility at once.
+      access?.reconcileAll()
+      return next
+    },
+    unlockView(agent) {
+      return access === null ? null : access.statusFor(agent)
     },
     defaultSettings() {
       return { ...DEFAULT_SETTINGS }
@@ -252,7 +289,26 @@ function mount(ctx) {
     }
   })
 
-  // 3. Mount the Web page routes.
+  // 3. Publish the per-conversation unlock tool and start the visibility
+  //    controller. The controller is started only after both baseline tools
+  //    exist, so no mask can ever hide them.
+  ctx.effect(() => {
+    const dispose = ctx.tools.register(buildUnlockTool(access, (exec) => (exec?.agent ?? currentAgent())))
+    return () => {
+      try {
+        dispose()
+      } catch {
+        /* ignore */
+      }
+    }
+  })
+
+  ctx.effect(() => {
+    access?.start()
+    return () => access?.dispose()
+  })
+
+  // 4. Mount the Web page routes.
   ctx.effect(() => {
     const disposers = makeRoutes(engine, { logger: ctx.logger }).map((route) => ctx.webServer.register(route))
     return () => {
@@ -266,7 +322,7 @@ function mount(ctx) {
     }
   })
 
-  // 4. Ask for approval before every dangerous execution (including a test
+  // 5. Ask for approval before every dangerous execution (including a test
   //    call made through the management tool), and before the management
   //    operations the user gated in the page's settings dialog. `ask` is
   //    exactly what the built-in approval seam and Auto review expect.
@@ -277,7 +333,7 @@ function mount(ctx) {
     getSettings: () => store.settings(),
   }))
 
-  // 5. Release every live registration with the plugin.
+  // 6. Release every live registration with the plugin.
   ctx.effect(() => () => {
     for (const id of [...registered.keys()]) unregister(id)
     registered.clear()

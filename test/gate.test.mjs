@@ -1,5 +1,5 @@
 import { approvalDecision, makePreExecuteListener, managementDecision, APPROVAL_SWITCH } from '../lib/gate.js'
-import { MANAGE_TOOL_NAME } from '../lib/tools.js'
+import { MANAGE_TOOL_NAME, UNLOCK_TOOL_NAME } from '../lib/tools.js'
 
 const fails = []
 const check = (label, condition, extra) => {
@@ -57,8 +57,12 @@ check('manage test of safe tool delegates', (await decide(MANAGE_TOOL_NAME, { ac
 nextCalls = 0
 check('manage list delegates', (await decide(MANAGE_TOOL_NAME, { action: 'list' })) === ALLOW && nextCalls === 1)
 
+nextCalls = 0
+check('unlock tool delegates without management approval', (await decide(UNLOCK_TOOL_NAME, { action: 'unlock', pack: 'x' })) === ALLOW && nextCalls === 1)
+
 // --- management approval switches ------------------------------------------
 check('switch map', APPROVAL_SWITCH.create === 'approveCreate' && APPROVAL_SWITCH.update === 'approveUpdate' && APPROVAL_SWITCH.delete === 'approveDelete')
+check('unlock/lock are not approval switches', APPROVAL_SWITCH.unlock === undefined && APPROVAL_SWITCH.lock === undefined)
 
 settings = { approveCreate: false, approveUpdate: false, approveDelete: false }
 nextCalls = 0

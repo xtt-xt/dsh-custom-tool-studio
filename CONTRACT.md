@@ -49,10 +49,45 @@ No build step. Everything is plain ESM JavaScript for the host and a plain
   "id": "p_1a2b3c4d5e6f",       // host-generated
   "name": "文本处理",            // display label, 1–48 chars, unique (case-insensitive)
   "description": "处理文本统计与清洗的工具",  // optional, ≤500 chars
+  "alwaysUnlocked": false,      // true → visible in every conversation, no unlock needed
   "createdAt": "2026-10-18T13:00:00.000Z",
   "updatedAt": "2026-10-18T13:00:00.000Z"
 }
 ```
+
+### 1.2 Settings shape (`settings.json`)
+
+```jsonc
+{
+  "unlockMode": false,            // expose only the two studio tools until unlocked
+  "allowUngroupedUnlock": false,  // allow unlocking one ungrouped tool by name
+  "approveCreate": false,
+  "approveUpdate": false,
+  "approveDelete": true
+}
+```
+
+Missing keys fall back to these defaults. `unlockMode` and
+`allowUngroupedUnlock` are policy gates: turning the latter off hides
+remembered single-tool unlocks but does not erase them from `unlocks.json`.
+
+### 1.3 Per-session unlock shape (`unlocks.json`)
+
+```jsonc
+{
+  "version": 1,
+  "sessions": {
+    "<sessionId>": {
+      "packs": ["p_1a2b3c4d5e6f"],  // unlocked pack ids
+      "tools": ["t_1a2b3c4d5e6f"],  // individually unlocked ungrouped tool ids
+      "updatedAt": "2026-10-18T13:00:00.000Z"
+    }
+  }
+}
+```
+
+At most the 200 most recently updated sessions are kept. Deleting a pack or a
+tool leaves stale ids behind; they are ignored when computing visibility.
 
 Membership lives on the **tool** (`packId`), never on the pack: one tool belongs
 to at most one pack, renaming a pack cannot break membership, and deleting a
@@ -77,23 +112,24 @@ All responses are JSON. Success: HTTP 200. Failure: HTTP 4xx/5xx with
 
 | Route | Method | Request body | Response |
 |---|---|---|---|
-| `list` | GET | – | `{ tools: ToolRecord[], python: PythonInfo, paths: { store, scripts }, pythonReady: boolean }` |
+| `list` | GET | – | `{ tools: ToolRecord[], packs: PackView[], settings, python: PythonInfo, paths: { store, packs, unlocks, scripts }, pythonReady: boolean }` |
 | `create` | POST | `{ name, title, description, parameters, code, dangerous, enabled }` | `{ tool: ToolRecord }` |
 | `update` | POST | `{ id, name?, title?, description?, parameters?, code?, dangerous?, enabled? }` | `{ tool: ToolRecord }` |
 | `delete` | POST | `{ id }` | `{ deleted: true }` |
 | `set-enabled` | POST | `{ id, enabled }` | `{ tool: ToolRecord }` |
 | `test` | POST | `{ id, args }` (`args` = object passed to `run`) | `{ ok, result, content, stdout, stderr, durationMs, error }` |
-| `settings` | GET/POST | GET – / POST `{ approveCreate?, approveUpdate?, approveDelete? }` | `{ settings, defaults? }` |
+| `settings` | GET/POST | GET – / POST `{ unlockMode?, allowUngroupedUnlock?, approveCreate?, approveUpdate?, approveDelete? }` | `{ settings, defaults? }` |
 | `packs` | GET | – | `{ packs: PackView[] }` |
-| `pack-create` | POST | `{ name, description?, tools?: string[] }` | `{ pack: PackView }` |
-| `pack-update` | POST | `{ id, name?, description?, tools?: string[] }` | `{ pack: PackView }` |
+| `pack-create` | POST | `{ name, description?, tools?: string[], alwaysUnlocked? }` | `{ pack: PackView }` |
+| `pack-update` | POST | `{ id, name?, description?, tools?: string[], alwaysUnlocked? }` | `{ pack: PackView }` |
 | `pack-delete` | POST | `{ id }` | `{ deleted: true, pack, tools: ToolRecord[] }` |
 | `pack-set-enabled` | POST | `{ id, enabled }` | `{ pack: PackView, tools: ToolRecord[] }` |
 | `health` | GET | – | `{ ok: true, python: PythonInfo, paths: {...} }` |
 
 `list` also returns `packs: PackView[]` and `settings`. `PackView` = the pack
 record plus `{ tools: string[], toolCount, enabledCount, allEnabled }`, where
-`tools` are member names.
+`tools` are member names. `alwaysUnlocked` is part of the pack record and is
+returned unchanged.
 
 `PythonInfo` = `{ ok: boolean, command?: string, version?: string, error?: string }`.
 
@@ -247,17 +283,25 @@ export function validateToolName(name);          // → string | undefined  (err
 export function normalizeParameters(parameters); // → JSON-Schema object node (never throws)
 export function normalizeInput(input, opts);     // → { record fields }  (throws Error on invalid)
 export function validatePackName(name);          // → string | undefined  (error text)
-export function normalizePackInput(input);       // → { name, description }  (throws Error on invalid)
-export function createStore(rootDir);            // → Store (tools + packs + settings)
+export function normalizePackInput(input);       // → { name, description, alwaysUnlocked }  (throws Error on invalid)
+export function createStore(rootDir);            // → Store (tools + packs + settings + unlocks)
+// Store also exposes unlocks(sessionId), setUnlocks(sessionId, {packs,tools}), clearUnlocks(sessionId)
 
 // lib/python.js
 export function detectPython();                  // → { ok, command?, version?, error? }   (cached)
 export async function runPython(record, args, options); // → { ok, result, content, stdout, stderr, durationMs, error? }
 
+// lib/access.js
+export const BASELINE_TOOL_NAMES;                // [custom_tool_manage, custom_tool_unlock]
+export function computeDeny(input);              // → string[]  (pure deny-list computation)
+export function createAccessController(options); // → { start, dispose, reconcileAll, enabled, statusFor, unlockPack, lockPack, unlockTool, lockTool }
+
 // lib/tools.js
 export const MANAGE_TOOL_NAME;                   // 'custom_tool_manage'
+export const UNLOCK_TOOL_NAME;                   // 'custom_tool_unlock'
 export function buildToolDefinition(record, run); // → plain ToolDefinition (no dsh imports)
 export function buildManageTool(engine);         // → the agent-facing management tool
+export function buildUnlockTool(access, resolveAgent); // → the per-conversation unlock tool
 ```
 
 `buildToolDefinition` returns a plain object acceptable to `ctx.tools.register`:
@@ -272,4 +316,12 @@ export function buildManageTool(engine);         // → the agent-facing managem
 - `id: 'dsh-custom-tool-studio'` appears exactly once, in the loader call.
 - After install the sidebar gains a 4th/fifth row and the page opens from it.
 - `node selfcheck.mjs` reports `SELF-CHECK OK`, including the pack lifecycle
-  (group → bulk switch → delete-keeps-tools) and the manage tool's pack actions.
+  (group → bulk switch → delete-keeps-tools), the manage tool's pack actions,
+  `alwaysUnlocked` (store + pack view), `custom_tool_unlock` list/unlock/lock,
+  `computeDeny` baseline/pack/single-tool behavior, and `unlocks.json` round-trip.
+- `node test/run.mjs` reports `ALL SUITES PASS (7)`.
+- Unlock mode: enabling it leaves exactly `custom_tool_manage` and
+  `custom_tool_unlock` visible; a pack unlock reveals its members on the next
+  request; another session/subagent stays locked; `alwaysUnlocked` packs are
+  visible everywhere; the single-tool switch gates ungrouped unlocks; disabling
+  the mode lifts every mask.

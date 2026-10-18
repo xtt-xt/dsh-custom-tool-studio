@@ -120,6 +120,8 @@ const tools = await loadHostModule('./lib/tools.js', ['buildToolDefinition', 'bu
 
 const access = await loadHostModule('./lib/access.js', ['createAccessController', 'computeDeny', 'BASELINE_TOOL_NAMES'])
 
+const prompt = await loadHostModule('./lib/prompt.js', ['buildPackContextText'])
+
 const {
   TOOL_NAME_RE,
   validateToolName,
@@ -132,6 +134,7 @@ const {
 } = store
 const { buildToolDefinition, buildManageTool, buildUnlockTool, MANAGE_TOOL_NAME, UNLOCK_TOOL_NAME } = tools
 const { computeDeny, BASELINE_TOOL_NAMES } = access
+const { buildPackContextText } = prompt
 
 // ---------------------------------------------------------------------------
 // TOOL_NAME_RE
@@ -557,6 +560,17 @@ record('per-session unlock state round-trips through unlocks.json', () => {
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+record('prompt context lists packs only while unlock mode is on', () => {
+  const packs = [{ id: 'p1', name: '自检包', alwaysUnlocked: false }]
+  const records = [{ name: 'selfcheck_ctx_tool', packId: 'p1', enabled: true }]
+  const on = buildPackContextText({ settings: DEFAULT_SETTINGS, packs, records })
+  must(on === '', 'unlock mode is off by default, so the context must be empty')
+  const text = buildPackContextText({ settings: { ...DEFAULT_SETTINGS, unlockMode: true }, packs, records })
+  must(text.includes('自检包'), 'pack name missing from the prompt context')
+  must(text.includes('selfcheck_ctx_tool'), 'pack member missing from the prompt context')
+  return 'empty off / lists on'
 })
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 {
   "name": "dsh-custom-tool-studio",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "license": "MIT",
   "type": "module",
   "description": "Custom tool studio: author Python tools in a Web page or through agent tools, then run them as first-class DSH tools. Dangerous tools require built-in approval before every execution. Optional per-conversation unlock mode (deferred tool loading) with always-unlocked packs and single-tool unlocks for ungrouped tools.",

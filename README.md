@@ -192,6 +192,7 @@ def run(args):
 4. **始终解锁**：编辑工具包 → 打开「始终解锁（所有对话可见）」。这个包在任何对话里都无需解锁，适合常用工具。也可以让 AI 用 `custom_tool_manage` 的 `pack_update` 传 `alwaysUnlocked=true`。
 5. **未分组工具**：编辑工具 → 把它放进某个工具包是推荐做法。若确实要保留未分组，可在「设置」里打开「允许单独解锁未分组工具」，然后 AI 用 `custom_tool_unlock` 的 `tool="工具名"` 单独解锁；关闭这个开关时，未分组工具不能单独解锁，只能放进工具包。
 6. 关闭解锁模式：所有启用工具立即恢复可见；`unlocks.json` 里的记录保留，下次开启继续生效。
+7. **工具包清单会注入上下文**：插件注册了一段动态运行上下文（`ctx.systemPrompt.context`），把当前工具包、成员名与未分组工具写进每个模型步骤的提示里，AI 不用先调 `action="list"` 就知道有什么可解锁。文本每次组装时重建，改包/改开关下一轮即生效；解锁模式关闭时不注入，避免无意义 token。
 
 注意：
 
@@ -389,13 +390,13 @@ node F:\xtt\workspace\dsh-custom-tool-studio\selfcheck.mjs
 
 期望最后一行是 `SELF-CHECK OK`（退出码 0）。它会检查：工具名校验、参数 schema 归一化、输入校验、`buildToolDefinition` 的输出结构 / render 文本块 / execute 返回键与声明 schema 一致、`custom_tool_manage` 名称与 `pack_*` 动作、工具包的分组 / 整包开关 / 删除后保留工具、`alwaysUnlocked`、`custom_tool_unlock` 的 list/unlock/lock、`computeDeny` 的基线/包/单工具规则，以及 `unlocks.json` 往返。
 
-完整离线套件（7 个）：
+完整离线套件（8 个）：
 
 ```powershell
 node F:\xtt\workspace\dsh-custom-tool-studio\test\run.mjs
 ```
 
-期望 `ALL SUITES PASS (7)`。
+期望 `ALL SUITES PASS (8)`。
 
 线上验收解锁模式（建议按顺序）：
 
@@ -405,6 +406,7 @@ node F:\xtt\workspace\dsh-custom-tool-studio\test\run.mjs
 4. 另开一个对话 / 子代理：它应显示「当前对话 0 个已解锁」，看不到上一个对话解锁的工具；
 5. 给某个包打开「始终解锁」后，新对话无需解锁即可看到它的成员；
 6. 关闭解锁模式：所有启用工具立即恢复可见；再打开，`unlocks.json` 里的记录继续生效。
+7. 打开解锁模式时，模型上下文里应出现一段「自定义工具包（解锁模式已开启）」并列出包名与成员；关掉后该段消失。
 
 完整离线测试（宿主 store / HTTP 路由 / 审批门 / 页面字典 / 页面渲染）：
 
@@ -412,7 +414,7 @@ node F:\xtt\workspace\dsh-custom-tool-studio\test\run.mjs
 node F:\xtt\workspace\dsh-custom-tool-studio\test\run.mjs   # 或 npm test
 ```
 
-期望最后一行是 `ALL SUITES PASS (5)`。
+期望最后一行是 `ALL SUITES PASS (8)`。
 
 ### 8.4 卸载
 
@@ -522,6 +524,7 @@ F:\xtt\workspace\dsh-custom-tool-studio\
 │  ├─ access.js          # 按 agent 计算 deny 掩码；会话解锁状态与 bundle 重挂清理
 │  ├─ python.js          # Python 探测与执行（stdout/stderr/超时/取消）
 │  ├─ tools.js           # 每个记录 → ToolDefinition；custom_tool_manage + custom_tool_unlock
+│  ├─ prompt.js          # 解锁模式下把工具包清单写进模型上下文
 │  └─ routes.js          # /api/custom-tool-studio/* 路由
 ├─ client.js             # Web 页面（侧边栏 + 分组列表/编辑/测试/设置/始终解锁）
 ├─ test\                 # 离线测试（node test/run.mjs）
@@ -529,6 +532,7 @@ F:\xtt\workspace\dsh-custom-tool-studio\
 │  ├─ store.test.mjs     # 记录校验 / 持久化 / 工具包 / 解锁状态
 │  ├─ access.test.mjs    # deny 掩码、每对话隔离、模式开关、持久化
 │  ├─ unlock-tool.test.mjs # custom_tool_unlock 的 list/unlock/lock
+│  ├─ prompt.test.mjs    # 上下文里的工具包清单（模式开关、成员、始终解锁）
 │  ├─ routes.test.mjs    # HTTP 路由与错误码
 │  ├─ gate.test.mjs      # 危险工具与审批开关
 │  ├─ client-dict.test.mjs   # 字典 zh/en 对齐、用到的 key 都存在

@@ -302,7 +302,15 @@ export const UNLOCK_TOOL_NAME;                   // 'custom_tool_unlock'
 export function buildToolDefinition(record, run); // → plain ToolDefinition (no dsh imports)
 export function buildManageTool(engine);         // → the agent-facing management tool
 export function buildUnlockTool(access, resolveAgent); // → the per-conversation unlock tool
+
+// lib/prompt.js
+export function buildPackContextText(state);     // → the unlock-mode prompt context block ('' when the mode is off)
 ```
+
+`index.js` registers `buildPackContextText` as a dynamic runtime context on
+`ctx.systemPrompt.context({ name: 'custom-tool-studio.packs', order: 1000 })`,
+so every model step sees the current pack list; the text is rebuilt per
+assembly, and turning unlock mode off makes it empty.
 
 `buildToolDefinition` returns a plain object acceptable to `ctx.tools.register`:
 `{ name, description, parameters, output: { schema, render }, execute }` where
@@ -319,7 +327,7 @@ export function buildUnlockTool(access, resolveAgent); // → the per-conversati
   (group → bulk switch → delete-keeps-tools), the manage tool's pack actions,
   `alwaysUnlocked` (store + pack view), `custom_tool_unlock` list/unlock/lock,
   `computeDeny` baseline/pack/single-tool behavior, and `unlocks.json` round-trip.
-- `node test/run.mjs` reports `ALL SUITES PASS (7)`.
+- `node test/run.mjs` reports `ALL SUITES PASS (8)`.
 - Unlock mode: enabling it leaves exactly `custom_tool_manage` and
   `custom_tool_unlock` visible; a pack unlock reveals its members on the next
   request; another session/subagent stays locked; `alwaysUnlocked` packs are

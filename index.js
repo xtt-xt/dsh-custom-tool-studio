@@ -19,6 +19,7 @@ import { join, resolve } from 'node:path'
 import { createStore, DEFAULT_SETTINGS } from './lib/store.js'
 import { detectPython, runPython } from './lib/python.js'
 import { buildManageTool, buildToolDefinition, buildUnlockTool } from './lib/tools.js'
+import { buildPackContextText } from './lib/prompt.js'
 import { createAccessController } from './lib/access.js'
 import { makeRoutes } from './lib/routes.js'
 import { makePreExecuteListener } from './lib/gate.js'
@@ -27,7 +28,7 @@ import { makePreExecuteListener } from './lib/gate.js'
 export const name = 'custom-tool-studio'
 
 /** Services required before tools can be registered and routes mounted. */
-export const inject = ['webServer', 'tools']
+export const inject = ['webServer', 'tools', 'systemPrompt']
 
 const TIMEOUT_MS = Number(process.env.DSH_CUSTOM_TOOL_TIMEOUT_MS) > 0
   ? Number(process.env.DSH_CUSTOM_TOOL_TIMEOUT_MS)
@@ -322,7 +323,36 @@ function mount(ctx) {
     }
   })
 
-  // 5. Ask for approval before every dangerous execution (including a test
+  // 5. Put the current pack list into every conversation's prompt context, so
+  //    a model that never called the unlock tool still knows what it can
+  //    unlock. The text is rebuilt on each assembly, so pack edits and the
+  //    mode switch take effect on the next step without re-registration.
+  ctx.effect(() => {
+    const dispose = ctx.systemPrompt.context({
+      name: 'custom-tool-studio.packs',
+      order: 1000,
+      text: () => {
+        try {
+          return buildPackContextText({
+            settings: store.settings(),
+            packs: store.listPacks(),
+            records: store.list(),
+          })
+        } catch {
+          return ''
+        }
+      },
+    })
+    return () => {
+      try {
+        dispose()
+      } catch {
+        /* ignore */
+      }
+    }
+  })
+
+  // 6. Ask for approval before every dangerous execution (including a test
   //    call made through the management tool), and before the management
   //    operations the user gated in the page's settings dialog. `ask` is
   //    exactly what the built-in approval seam and Auto review expect.

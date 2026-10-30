@@ -23,6 +23,7 @@ import { buildPackContextText } from './lib/prompt.js'
 import { createAccessController } from './lib/access.js'
 import { makeRoutes } from './lib/routes.js'
 import { makePreExecuteListener } from './lib/gate.js'
+import { mountDshGo } from './lib/dshgo.js'
 
 /** Cordis plugin name (log/loader identity, not a tool name). */
 export const name = 'custom-tool-studio'
@@ -277,6 +278,20 @@ function mount(ctx) {
 
   // 1. Register every stored tool for this process generation.
   syncTools()
+
+  // 1b. dsh-go native front end: only on hosts that carry the bridge.
+  ctx.inject(['dshGo'], (child) => {
+    try {
+      mountDshGo(child, { engine, store })
+    } catch (error) {
+      try {
+        ctx.logger?.warn?.(`[custom-tool-studio] dsh-go mount failed: ${error instanceof Error ? error.message : String(error)}`)
+      } catch {
+        /* ignore */
+      }
+    }
+  })
+
 
   // 2. Publish the agent-facing management tool.
   ctx.effect(() => {

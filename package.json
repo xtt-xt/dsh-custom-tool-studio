@@ -1,6 +1,6 @@
 {
   "name": "dsh-custom-tool-studio",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "license": "MIT",
   "type": "module",
   "description": "Custom tool studio: author Python tools in a Web page or through agent tools, then run them as first-class DSH tools. Dangerous tools require built-in approval before every execution. Optional per-conversation unlock mode (deferred tool loading) with always-unlocked packs and single-tool unlocks for ungrouped tools.",
@@ -43,7 +43,8 @@
   },
   "homepage": "https://github.com/xtt-xt/dsh-custom-tool-studio#readme",
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
   },
   "dsh": {
     "bundle": {
@@ -56,6 +57,96 @@
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-layout"
+      ]
+    }
+  },
+  "dshGo": {
+    "v": 1,
+    "title": {
+      "zh": "工具工作室",
+      "en": "Tool studio"
+    },
+    "icon": "wrench",
+    "contributes": {
+      "composer.actions": [
+        {
+          "id": "new-tool",
+          "label": {
+            "zh": "新建工具",
+            "en": "New tool"
+          },
+          "icon": "add"
+        },
+        {
+          "id": "open-studio",
+          "label": {
+            "zh": "工具",
+            "en": "Tools"
+          },
+          "icon": "wrench",
+          "effect": {
+            "type": "open",
+            "page": "panel:studio"
+          }
+        }
+      ],
+      "composer.strip": [
+        {
+          "id": "studio-count",
+          "icon": "wrench",
+          "panel": "studio"
+        }
+      ],
+      "panels": [
+        {
+          "id": "studio",
+          "title": {
+            "zh": "自定义工具",
+            "en": "Custom tools"
+          },
+          "icon": "wrench",
+          "placement": [
+            "session.tab",
+            "features",
+            "chat.panel"
+          ]
+        },
+        {
+          "id": "tool",
+          "title": {
+            "zh": "工具",
+            "en": "Tool"
+          },
+          "icon": "tool",
+          "placement": [
+            "session.tab",
+            "features"
+          ]
+        },
+        {
+          "id": "pack",
+          "title": {
+            "zh": "工具包",
+            "en": "Pack"
+          },
+          "icon": "puzzle",
+          "placement": [
+            "session.tab",
+            "features"
+          ]
+        },
+        {
+          "id": "settings",
+          "title": {
+            "zh": "设置",
+            "en": "Settings"
+          },
+          "icon": "settings",
+          "placement": [
+            "session.tab",
+            "features"
+          ]
+        }
       ]
     }
   }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-custom-tool-studio",
-  "version": "1.3.0",
+  "version": "1.3.2",
   "license": "MIT",
   "type": "module",
   "description": "Custom tool studio: author Python tools in a Web page or through agent tools, then run them as first-class DSH tools. Dangerous tools require built-in approval before every execution. Optional per-conversation unlock mode (deferred tool loading) with always-unlocked packs and single-tool unlocks for ungrouped tools.",
@@ -70,6 +70,20 @@
     "contributes": {
       "composer.actions": [
         {
+          "id": "open-studio",
+          "label": {
+            "zh": "工具",
+            "en": "Tools"
+          },
+          "icon": "wrench",
+          "effect": {
+            "type": "open",
+            "page": "panel:studio"
+          }
+        }
+      ],
+      "composer.tools": [
+        {
           "id": "new-tool",
           "label": {
             "zh": "新建工具",
@@ -78,10 +92,20 @@
           "icon": "add"
         },
         {
-          "id": "open-studio",
+          "id": "new-pack",
           "label": {
-            "zh": "工具",
-            "en": "Tools"
+            "zh": "新建工具包",
+            "en": "New pack"
+          },
+          "icon": "puzzle"
+        }
+      ],
+      "session.actions": [
+        {
+          "id": "studio-side",
+          "label": {
+            "zh": "自定义工具",
+            "en": "Custom tools"
           },
           "icon": "wrench",
           "effect": {
@@ -108,7 +132,8 @@
           "placement": [
             "session.tab",
             "features",
-            "chat.panel"
+            "chat.panel",
+            "plugin"
           ]
         },
         {
@@ -121,7 +146,8 @@
           "placement": [
             "session.tab",
             "features"
-          ]
+          ],
+          "presentation": "sheet"
         },
         {
           "id": "pack",
@@ -133,7 +159,8 @@
           "placement": [
             "session.tab",
             "features"
-          ]
+          ],
+          "presentation": "sheet"
         },
         {
           "id": "settings",
@@ -144,8 +171,10 @@
           "icon": "settings",
           "placement": [
             "session.tab",
-            "features"
-          ]
+            "features",
+            "plugin"
+          ],
+          "presentation": "sheet"
         }
       ]
     }
